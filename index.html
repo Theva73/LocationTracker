@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Current Local Weather</title>
+    <title>Current Local Weather & Forecast</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -14,6 +14,7 @@
             font-family: 'Inter', sans-serif;
             background: linear-gradient(135deg, #a8c0ff, #3f2b96); /* Blue to Purple Gradient */
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
@@ -27,10 +28,11 @@
             border-radius: 20px;
             padding: 2rem;
             text-align: center;
-            max-width: 500px;
+            max-width: 550px;
             width: 100%;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.2);
+            margin-bottom: 1rem;
         }
         .icon-large {
             font-size: 4rem;
@@ -59,6 +61,49 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+
+        .hourly-forecast-container {
+            display: flex;
+            overflow-x: auto; /* Enable horizontal scrolling */
+            -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+            padding: 1rem 0;
+            gap: 1rem;
+            justify-content: flex-start; /* Align items to the start for scrolling */
+            width: 100%;
+            max-width: 550px; /* Match card max-width */
+            border-radius: 20px;
+            background-color: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .hourly-item {
+            flex-shrink: 0; /* Prevent items from shrinking */
+            width: 90px; /* Fixed width for each hour */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0.5rem;
+            text-align: center;
+            border-radius: 10px;
+            background-color: rgba(255, 255, 255, 0.05); /* Slightly darker background */
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .hourly-item i {
+            font-size: 1.8rem;
+            margin-bottom: 0.25rem;
+        }
+        .hourly-item p {
+            font-size: 0.9rem;
+            line-height: 1.2;
+        }
+        .hourly-item .temp {
+            font-weight: 600;
+        }
+        .hourly-item .pop {
+            font-size: 0.8rem;
+            color: #d1efff;
+        }
     </style>
 </head>
 <body class="selection:bg-indigo-300 selection:text-indigo-900">
@@ -72,7 +117,7 @@
         <div id="weather-display" class="hidden">
             <h2 id="location-name" class="text-3xl font-semibold mb-2"></h2>
             <div class="flex items-center justify-center gap-4 mb-4">
-                <i id="weather-icon" class="icon-large fas"></i>
+                <img id="weather-icon-img" class="w-20 h-20" alt="Weather Icon">
                 <div class="temp-large"><span id="temperature"></span>°C</div>
             </div>
             <p id="weather-description" class="text-2xl capitalize mb-2"></p>
@@ -83,8 +128,7 @@
             </div>
             <p id="rain-details" class="text-lg text-gray-200 mb-4"></p>
 
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg mb-6">
                 <div class="bg-white bg-opacity-10 p-3 rounded-xl flex items-center justify-center shadow-inner">
                     <i class="fas fa-tint mr-2 text-blue-300"></i> Humidity: <span id="humidity" class="ml-1"></span>%
                 </div>
@@ -93,16 +137,19 @@
                 </div>
             </div>
         </div>
-
-        <p class="text-xs text-gray-400 mt-8">
-            Please ensure location services are enabled in your browser. <br>
-            Get your free API key at <a href="https://www.weatherapi.com/signup.aspx" target="_blank" class="text-indigo-200 hover:underline">weatherapi.com/signup.aspx</a>.
-        </p>
     </div>
 
+    <div id="hourly-forecast" class="hidden hourly-forecast-container">
+        <!-- Hourly forecast items will be dynamically inserted here -->
+    </div>
+
+    <p class="text-xs text-gray-400 mt-8">
+        Please ensure location services are enabled in your browser.
+    </p>
+
     <script>
-        const API_KEY = "488fb3139c954f1681a204542250906"; // Your actual WeatherAPI.com API key
-        const BASE_URL = "https://api.weatherapi.com/v1/forecast.json"; // WeatherAPI.com forecast endpoint
+        const API_KEY = "488fb3139c954f1681a204542250906"; // Your WeatherAPI.com API key
+        const BASE_URL = "https://api.weatherapi.com/v1/forecast.json";
 
         const loadingDiv = document.getElementById('loading');
         const errorDiv = document.getElementById('error-message');
@@ -110,48 +157,19 @@
         const locationName = document.getElementById('location-name');
         const temperature = document.getElementById('temperature');
         const weatherDescription = document.getElementById('weather-description');
-        const weatherIcon = document.getElementById('weather-icon');
-        const rainCondition = document.getElementById('rain-condition'); // Will show "Chance of Rain" or "Actual Rainfall"
-        const rainDetails = document.getElementById('rain-details'); // Details like "X mm in last hr"
+        const weatherIconImg = document.getElementById('weather-icon-img'); // Changed to img for WeatherAPI icons
+        const rainCondition = document.getElementById('rain-condition');
+        const rainDetails = document.getElementById('rain-details');
         const humidity = document.getElementById('humidity');
         const windSpeed = document.getElementById('wind-speed');
-
-        // Function to set weather icon based on WeatherAPI.com icon code/condition text
-        // WeatherAPI.com uses codes like 1000 for clear, 1003 for partly cloudy, 1183 for light rain etc.
-        // It's simpler to map based on the 'text' description or directly use their icon.
-        // For simplicity, I'll use common keywords from description to map to Font Awesome icons.
-        function getWeatherIconClass(conditionText, isDay) {
-            conditionText = conditionText.toLowerCase();
-            if (conditionText.includes('sun') || conditionText.includes('clear')) {
-                return isDay ? 'fa-sun' : 'fa-moon';
-            } else if (conditionText.includes('cloud')) {
-                return 'fa-cloud';
-            } else if (conditionText.includes('rain') || conditionText.includes('drizzle')) {
-                return 'fa-cloud-rain';
-            } else if (conditionText.includes('snow') || conditionText.includes('sleet')) {
-                return 'fa-snowflake';
-            } else if (conditionText.includes('thunder') || conditionText.includes('storm')) {
-                return 'fa-bolt';
-            } else if (conditionText.includes('mist') || conditionText.includes('fog')) {
-                return 'fa-smog';
-            }
-            return 'fa-question-circle'; // Default
-        }
+        const hourlyForecastContainer = document.getElementById('hourly-forecast');
 
         async function fetchWeatherData(lat, lon) {
             loadingDiv.classList.remove('hidden');
             weatherDisplayDiv.classList.add('hidden');
+            hourlyForecastContainer.classList.add('hidden');
             errorDiv.classList.add('hidden');
 
-            // The API key is now injected, so no need for the placeholder check here
-            // if (API_KEY === "YOUR_WEATHERAPI_KEY" || API_KEY === "") {
-            //     loadingDiv.classList.add('hidden');
-            //     errorDiv.textContent = "Please replace 'YOUR_WEATHERAPI_KEY' with your actual API key from WeatherAPI.com.";
-            //     errorDiv.classList.remove('hidden');
-            //     return;
-            // }
-
-            // Request current weather and 1-day forecast (which includes hourly data)
             const url = `${BASE_URL}?key=${API_KEY}&q=${lat},${lon}&days=1&aqi=no&alerts=no`;
 
             try {
@@ -164,7 +182,6 @@
                 const data = await response.json();
                 console.log(data); // Log the full data for debugging
 
-                // Extract current data
                 const current = data.current;
                 const location = data.location;
                 const forecastToday = data.forecast.forecastday[0];
@@ -174,50 +191,67 @@
                 temperature.textContent = Math.round(current.temp_c);
                 weatherDescription.textContent = current.condition.text;
 
-                // Determine if it's day or night for icon selection
-                const isDay = current.is_day === 1;
-                weatherIcon.className = `icon-large fas ${getWeatherIconClass(current.condition.text, isDay)}`;
+                // Use WeatherAPI.com's provided icon URL
+                weatherIconImg.src = current.condition.icon;
+                weatherIconImg.alt = current.condition.text;
 
                 humidity.textContent = current.humidity;
-                windSpeed.textContent = current.wind_kph ? (current.wind_kph / 3.6).toFixed(1) : 'N/A'; // Convert kph to m/s for consistency
+                windSpeed.textContent = current.wind_kph.toFixed(1); // Keep as kph
 
-                // Rain Information: Prioritize actual rain (precip_mm) if > 0, otherwise show chance of rain
+                // Rain Information Logic
                 if (current.precip_mm > 0) {
                     rainCondition.textContent = 'Actual Rainfall';
                     rainDetails.textContent = `${current.precip_mm} mm recorded now`;
                 } else {
-                    // Find the current hour's forecast to get chance_of_rain
-                    const currentTime = new Date();
+                    const currentTime = new Date(location.localtime_epoch * 1000); // Use localtime_epoch for accuracy
                     const currentHour = currentTime.getHours();
-                    let nearestHourlyData = null;
+                    let currentHourForecast = null;
 
-                    // Iterate through hourly forecast to find the entry closest to current time
-                    // WeatherAPI hourly forecast might not have an exact match for the current minute,
-                    // so find the closest past or current hour.
+                    // Find the forecast entry for the current hour
                     for (const hourData of hourlyForecast) {
-                        const hourDateTime = new Date(hourData.time_epoch * 1000); // Convert epoch to ms
+                        const hourDateTime = new Date(hourData.time_epoch * 1000);
                         if (hourDateTime.getHours() === currentHour) {
-                            nearestHourlyData = hourData;
+                            currentHourForecast = hourData;
                             break;
                         }
                     }
 
-                    if (nearestHourlyData && typeof nearestHourlyData.chance_of_rain !== 'undefined') {
+                    if (currentHourForecast && typeof currentHourForecast.chance_of_rain !== 'undefined') {
                         rainCondition.textContent = 'Chance of Rain';
-                        rainDetails.textContent = `${nearestHourlyData.chance_of_rain}% for this hour`;
+                        rainDetails.textContent = `${currentHourForecast.chance_of_rain}% for this hour`;
                     } else {
                         rainCondition.textContent = 'No Rain Expected';
                         rainDetails.textContent = 'No immediate rainfall or forecast probability detected.';
                     }
                 }
 
+                // Populate Hourly Forecast Timeline
+                hourlyForecastContainer.innerHTML = ''; // Clear previous items
+                hourlyForecast.forEach(hourData => {
+                    const time = new Date(hourData.time_epoch * 1000);
+                    const hour = time.getHours();
+                    const displayTime = hour === 0 ? '12 AM' : (hour === 12 ? '12 PM' : (hour < 12 ? `${hour} AM` : `${hour - 12} PM`));
+
+                    const hourlyItem = document.createElement('div');
+                    hourlyItem.classList.add('hourly-item');
+                    hourlyItem.innerHTML = `
+                        <p>${displayTime}</p>
+                        <img src="${hourData.condition.icon}" class="w-10 h-10" alt="${hourData.condition.text}">
+                        <p class="temp">${Math.round(hourData.temp_c)}°C</p>
+                        <p class="pop">💧 ${hourData.chance_of_rain}%</p>
+                    `;
+                    hourlyForecastContainer.appendChild(hourlyItem);
+                });
+
+
                 loadingDiv.classList.add('hidden');
                 weatherDisplayDiv.classList.remove('hidden');
+                hourlyForecastContainer.classList.remove('hidden');
 
             } catch (error) {
                 console.error("Error fetching weather data:", error);
                 loadingDiv.classList.add('hidden');
-                errorDiv.textContent = `Could not fetch weather data: ${error.message}. Please ensure location services are enabled.`;
+                errorDiv.textContent = `Could not fetch weather data: ${error.message}. Please ensure location services are enabled and your API key is valid.`;
                 errorDiv.classList.remove('hidden');
             }
         }
