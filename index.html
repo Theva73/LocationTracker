@@ -89,10 +89,6 @@
             background-color: rgba(255, 255, 255, 0.05); /* Slightly darker background */
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         }
-        .hourly-item i {
-            font-size: 1.8rem;
-            margin-bottom: 0.25rem;
-        }
         .hourly-item p {
             font-size: 0.9rem;
             line-height: 1.2;
@@ -157,7 +153,7 @@
         const locationName = document.getElementById('location-name');
         const temperature = document.getElementById('temperature');
         const weatherDescription = document.getElementById('weather-description');
-        const weatherIconImg = document.getElementById('weather-icon-img'); // Changed to img for WeatherAPI icons
+        const weatherIconImg = document.getElementById('weather-icon-img');
         const rainCondition = document.getElementById('rain-condition');
         const rainDetails = document.getElementById('rain-details');
         const humidity = document.getElementById('humidity');
@@ -191,23 +187,21 @@
                 temperature.textContent = Math.round(current.temp_c);
                 weatherDescription.textContent = current.condition.text;
 
-                // Use WeatherAPI.com's provided icon URL
                 weatherIconImg.src = current.condition.icon;
                 weatherIconImg.alt = current.condition.text;
 
                 humidity.textContent = current.humidity;
-                windSpeed.textContent = current.wind_kph.toFixed(1); // Keep as kph
+                windSpeed.textContent = current.wind_kph.toFixed(1);
 
                 // Rain Information Logic
                 if (current.precip_mm > 0) {
                     rainCondition.textContent = 'Actual Rainfall';
                     rainDetails.textContent = `${current.precip_mm} mm recorded now`;
                 } else {
-                    const currentTime = new Date(location.localtime_epoch * 1000); // Use localtime_epoch for accuracy
+                    const currentTime = new Date(location.localtime_epoch * 1000);
                     const currentHour = currentTime.getHours();
                     let currentHourForecast = null;
 
-                    // Find the forecast entry for the current hour
                     for (const hourData of hourlyForecast) {
                         const hourDateTime = new Date(hourData.time_epoch * 1000);
                         if (hourDateTime.getHours() === currentHour) {
@@ -225,9 +219,26 @@
                     }
                 }
 
-                // Populate Hourly Forecast Timeline
+                // Populate Hourly Forecast Timeline for upcoming 6 hours
                 hourlyForecastContainer.innerHTML = ''; // Clear previous items
-                hourlyForecast.forEach(hourData => {
+
+                const currentLocalTime = new Date(location.localtime_epoch * 1000);
+                const currentHour = currentLocalTime.getHours();
+
+                // Find the index of the current hour in the hourlyForecast array
+                let startIndex = 0;
+                for (let i = 0; i < hourlyForecast.length; i++) {
+                    const hourDateTime = new Date(hourlyForecast[i].time_epoch * 1000);
+                    if (hourDateTime.getHours() === currentHour) {
+                        startIndex = i;
+                        break;
+                    }
+                }
+
+                // Slice the array to get the next 6 hours (current hour + 5 more)
+                const upcomingSixHours = hourlyForecast.slice(startIndex, startIndex + 6);
+
+                upcomingSixHours.forEach(hourData => {
                     const time = new Date(hourData.time_epoch * 1000);
                     const hour = time.getHours();
                     const displayTime = hour === 0 ? '12 AM' : (hour === 12 ? '12 PM' : (hour < 12 ? `${hour} AM` : `${hour - 12} PM`));
