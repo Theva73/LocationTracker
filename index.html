@@ -64,7 +64,7 @@
 <body class="selection:bg-indigo-300 selection:text-indigo-900">
     <div class="weather-card">
         <h1 class="text-4xl font-bold mb-4">Current Local Weather</h1>
-        <p class="text-sm text-gray-300 mb-6">Powered by OpenWeatherMap API</p>
+        <p class="text-sm text-gray-300 mb-6">Powered by WeatherAPI.com</p>
 
         <div id="loading" class="loading-spinner"></div>
         <div id="error-message" class="text-red-300 text-lg mt-4 hidden"></div>
@@ -89,20 +89,20 @@
                     <i class="fas fa-tint mr-2 text-blue-300"></i> Humidity: <span id="humidity" class="ml-1"></span>%
                 </div>
                 <div class="bg-white bg-opacity-10 p-3 rounded-xl flex items-center justify-center shadow-inner">
-                    <i class="fas fa-wind mr-2 text-green-300"></i> Wind: <span id="wind-speed" class="ml-1"></span> m/s
+                    <i class="fas fa-wind mr-2 text-green-300"></i> Wind: <span id="wind-speed" class="ml-1"></span> km/h
                 </div>
             </div>
         </div>
 
         <p class="text-xs text-gray-400 mt-8">
-            Please ensure location services are enabled in your browser.
+            Please ensure location services are enabled in your browser. <br>
+            Get your free API key at <a href="https://www.weatherapi.com/signup.aspx" target="_blank" class="text-indigo-200 hover:underline">weatherapi.com/signup.aspx</a>.
         </p>
     </div>
 
     <script>
-        const API_KEY = "8262063f02eec432bfd9862c238931e6"; // Your actual API key
-        // Using OpenWeatherMap One Call API 3.0 for more detailed forecast data including probability of precipitation
-        const BASE_URL = "https://api.openweathermap.org/data/3.0/onecall";
+        const API_KEY = "488fb3139c954f1681a204542250906"; // Your actual WeatherAPI.com API key
+        const BASE_URL = "https://api.weatherapi.com/v1/forecast.json"; // WeatherAPI.com forecast endpoint
 
         const loadingDiv = document.getElementById('loading');
         const errorDiv = document.getElementById('error-message');
@@ -116,22 +116,26 @@
         const humidity = document.getElementById('humidity');
         const windSpeed = document.getElementById('wind-speed');
 
-        // Function to set weather icon based on OpenWeatherMap icon code
-        function getWeatherIconClass(iconCode) {
-            // Mapping OpenWeatherMap icons to Font Awesome classes
-            switch (iconCode) {
-                case '01d': return 'fa-sun'; // clear sky day
-                case '01n': return 'fa-moon'; // clear sky night
-                case '02d': case '02n': return 'fa-cloud-sun'; // few clouds
-                case '03d': case '03n': return 'fa-cloud'; // scattered clouds
-                case '04d': case '04n': return 'fa-cloud-meatball'; // broken clouds, overcast clouds
-                case '09d': case '09n': return 'fa-cloud-showers-heavy'; // shower rain
-                case '10d': case '10n': return 'fa-cloud-rain'; // rain
-                case '11d': case '11n': return 'fa-bolt'; // thunderstorm
-                case '13d': case '13n': return 'fa-snowflake'; // snow
-                case '50d': case '50n': return 'fa-smog'; // mist
-                default: return 'fa-question-circle'; // fallback
+        // Function to set weather icon based on WeatherAPI.com icon code/condition text
+        // WeatherAPI.com uses codes like 1000 for clear, 1003 for partly cloudy, 1183 for light rain etc.
+        // It's simpler to map based on the 'text' description or directly use their icon.
+        // For simplicity, I'll use common keywords from description to map to Font Awesome icons.
+        function getWeatherIconClass(conditionText, isDay) {
+            conditionText = conditionText.toLowerCase();
+            if (conditionText.includes('sun') || conditionText.includes('clear')) {
+                return isDay ? 'fa-sun' : 'fa-moon';
+            } else if (conditionText.includes('cloud')) {
+                return 'fa-cloud';
+            } else if (conditionText.includes('rain') || conditionText.includes('drizzle')) {
+                return 'fa-cloud-rain';
+            } else if (conditionText.includes('snow') || conditionText.includes('sleet')) {
+                return 'fa-snowflake';
+            } else if (conditionText.includes('thunder') || conditionText.includes('storm')) {
+                return 'fa-bolt';
+            } else if (conditionText.includes('mist') || conditionText.includes('fog')) {
+                return 'fa-smog';
             }
+            return 'fa-question-circle'; // Default
         }
 
         async function fetchWeatherData(lat, lon) {
@@ -139,56 +143,73 @@
             weatherDisplayDiv.classList.add('hidden');
             errorDiv.classList.add('hidden');
 
-            // Exclude unnecessary data to keep response smaller: minutely, daily, alerts
-            // We need current and hourly for pop and rain volume
-            const url = `${BASE_URL}?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts&appid=${API_KEY}&units=metric`;
+            // The API key is now injected, so no need for the placeholder check here
+            // if (API_KEY === "YOUR_WEATHERAPI_KEY" || API_KEY === "") {
+            //     loadingDiv.classList.add('hidden');
+            //     errorDiv.textContent = "Please replace 'YOUR_WEATHERAPI_KEY' with your actual API key from WeatherAPI.com.";
+            //     errorDiv.classList.remove('hidden');
+            //     return;
+            // }
+
+            // Request current weather and 1-day forecast (which includes hourly data)
+            const url = `${BASE_URL}?key=${API_KEY}&q=${lat},${lon}&days=1&aqi=no&alerts=no`;
 
             try {
                 const response = await fetch(url);
                 if (!response.ok) {
                     const errorData = await response.json();
-                    throw new Error(`HTTP error! Status: ${response.status} - ${errorData.message || 'Unknown error'}`);
+                    let msg = errorData.error ? errorData.error.message : 'Unknown error';
+                    throw new Error(`HTTP error! Status: ${response.status} - ${msg}`);
                 }
                 const data = await response.json();
                 console.log(data); // Log the full data for debugging
 
-                // Try to get a more readable location name if available, otherwise default
-                let locationString = 'Your Location';
-                if (data.timezone) {
-                    const timezoneParts = data.timezone.split('/');
-                    if (timezoneParts.length > 1) {
-                        locationString = timezoneParts[1].replace(/_/g, ' '); // e.g., Asia/Singapore -> Singapore
+                // Extract current data
+                const current = data.current;
+                const location = data.location;
+                const forecastToday = data.forecast.forecastday[0];
+                const hourlyForecast = forecastToday.hour;
+
+                locationName.textContent = location.name || 'Your Location';
+                temperature.textContent = Math.round(current.temp_c);
+                weatherDescription.textContent = current.condition.text;
+
+                // Determine if it's day or night for icon selection
+                const isDay = current.is_day === 1;
+                weatherIcon.className = `icon-large fas ${getWeatherIconClass(current.condition.text, isDay)}`;
+
+                humidity.textContent = current.humidity;
+                windSpeed.textContent = current.wind_kph ? (current.wind_kph / 3.6).toFixed(1) : 'N/A'; // Convert kph to m/s for consistency
+
+                // Rain Information: Prioritize actual rain (precip_mm) if > 0, otherwise show chance of rain
+                if (current.precip_mm > 0) {
+                    rainCondition.textContent = 'Actual Rainfall';
+                    rainDetails.textContent = `${current.precip_mm} mm recorded now`;
+                } else {
+                    // Find the current hour's forecast to get chance_of_rain
+                    const currentTime = new Date();
+                    const currentHour = currentTime.getHours();
+                    let nearestHourlyData = null;
+
+                    // Iterate through hourly forecast to find the entry closest to current time
+                    // WeatherAPI hourly forecast might not have an exact match for the current minute,
+                    // so find the closest past or current hour.
+                    for (const hourData of hourlyForecast) {
+                        const hourDateTime = new Date(hourData.time_epoch * 1000); // Convert epoch to ms
+                        if (hourDateTime.getHours() === currentHour) {
+                            nearestHourlyData = hourData;
+                            break;
+                        }
+                    }
+
+                    if (nearestHourlyData && typeof nearestHourlyData.chance_of_rain !== 'undefined') {
+                        rainCondition.textContent = 'Chance of Rain';
+                        rainDetails.textContent = `${nearestHourlyData.chance_of_rain}% for this hour`;
                     } else {
-                        locationString = timezoneParts[0].replace(/_/g, ' ');
+                        rainCondition.textContent = 'No Rain Expected';
+                        rainDetails.textContent = 'No immediate rainfall or forecast probability detected.';
                     }
                 }
-                locationName.textContent = locationString;
-
-                // Current Weather Data
-                const currentWeather = data.current;
-                temperature.textContent = Math.round(currentWeather.temp);
-                weatherDescription.textContent = currentWeather.weather[0].description;
-                weatherIcon.className = `icon-large fas ${getWeatherIconClass(currentWeather.weather[0].icon)}`;
-                humidity.textContent = currentWeather.humidity;
-                windSpeed.textContent = currentWeather.wind_speed;
-
-                // Rain Information: Prioritize actual rain volume if available
-                if (currentWeather.rain && currentWeather.rain['1h']) {
-                    rainCondition.textContent = 'Actual Rainfall';
-                    rainDetails.textContent = `${currentWeather.rain['1h']} mm in last 1 hour`;
-                } else if (currentWeather.rain && currentWeather.rain['3h']) {
-                    rainCondition.textContent = 'Actual Rainfall';
-                    rainDetails.textContent = `${currentWeather.rain['3h']} mm in last 3 hours`;
-                } else if (data.hourly && data.hourly.length > 0 && typeof data.hourly[0].pop !== 'undefined') {
-                    // Fallback to probability of precipitation from hourly forecast
-                    const popPercentage = Math.round(data.hourly[0].pop * 100);
-                    rainCondition.textContent = 'Chance of Rain';
-                    rainDetails.textContent = `${popPercentage}% for the next hour`;
-                } else {
-                    rainCondition.textContent = 'No Rain Expected';
-                    rainDetails.textContent = 'No recent rainfall or forecast probability detected.';
-                }
-
 
                 loadingDiv.classList.add('hidden');
                 weatherDisplayDiv.classList.remove('hidden');
@@ -196,7 +217,7 @@
             } catch (error) {
                 console.error("Error fetching weather data:", error);
                 loadingDiv.classList.add('hidden');
-                errorDiv.textContent = `Could not fetch weather data: ${error.message}. Please check your API key, ensure location services are enabled, and try again later.`;
+                errorDiv.textContent = `Could not fetch weather data: ${error.message}. Please ensure location services are enabled.`;
                 errorDiv.classList.remove('hidden');
             }
         }
