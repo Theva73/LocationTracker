@@ -1,27 +1,220 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Live Location Tracker</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <link rel="manifest" href="manifest.json">
-  <meta name="theme-color" content="#2196f3">
-
-  <style>
-    html,body,#map{margin:0;height:100%}
-    #status{position:absolute;top:8px;left:8px;background:#fff;
-            padding:6px 10px;border-radius:4px;font:14px/1.4 sans-serif;
-            box-shadow:0 1px 4px rgba(0,0,0,.3);z-index:999}
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Current Local Weather</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" xintegrity="sha512-Fo3rlrZj/k7ujlZH/yQ9+xL6U1z8lM8Nn4j2r7XN8b2Bf2C7F1ZlR2M1sH0z0+XJ5Q5eF9S1c+0Z3/u+g==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #a8c0ff, #3f2b96); /* Blue to Purple Gradient */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: white;
+            padding: 1rem;
+        }
+        .weather-card {
+            background-color: rgba(255, 255, 255, 0.15); /* Slightly transparent white */
+            backdrop-filter: blur(10px); /* Frosted glass effect */
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        .icon-large {
+            font-size: 4rem;
+        }
+        .temp-large {
+            font-size: 5rem;
+            font-weight: 700;
+            line-height: 1;
+        }
+        .rain-percentage {
+            font-size: 2.5rem;
+            font-weight: 600;
+            margin-top: 1rem;
+            color: #d1efff; /* Lighter blue for rain */
+        }
+        .loading-spinner {
+            border: 8px solid rgba(255, 255, 255, 0.3);
+            border-top: 8px solid #fff;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            margin: 2rem auto;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
-<body>
-  <div id="status">Requesting location…</div>
-  <div id="map"></div>
+<body class="selection:bg-indigo-300 selection:text-indigo-900">
+    <div class="weather-card">
+        <h1 class="text-4xl font-bold mb-4">Current Local Weather</h1>
+        <p class="text-sm text-gray-300 mb-6">Powered by OpenWeatherMap API</p>
 
-  <script src="app.js"></script>
-  <!-- 🔑  REPLACE YOUR_API_KEY -->
-  <script async defer
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBU92DM3cjDfuPuaKtwpylhkMsSCeV5eRA&callback=initMap">
-  </script>
+        <div id="loading" class="loading-spinner"></div>
+        <div id="error-message" class="text-red-300 text-lg mt-4 hidden"></div>
+
+        <div id="weather-display" class="hidden">
+            <h2 id="location-name" class="text-3xl font-semibold mb-2"></h2>
+            <div class="flex items-center justify-center gap-4 mb-4">
+                <i id="weather-icon" class="icon-large fas"></i>
+                <div class="temp-large"><span id="temperature"></span>°C</div>
+            </div>
+            <p id="weather-description" class="text-2xl capitalize mb-2"></p>
+
+            <div class="rain-percentage mb-4">
+                <i class="fas fa-cloud-showers-heavy text-indigo-200"></i>
+                <span id="rain-info"></span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
+                <div class="bg-white bg-opacity-10 p-3 rounded-xl flex items-center justify-center shadow-inner">
+                    <i class="fas fa-tint mr-2 text-blue-300"></i> Humidity: <span id="humidity" class="ml-1"></span>%
+                </div>
+                <div class="bg-white bg-opacity-10 p-3 rounded-xl flex items-center justify-center shadow-inner">
+                    <i class="fas fa-wind mr-2 text-green-300"></i> Wind: <span id="wind-speed" class="ml-1"></span> m/s
+                </div>
+            </div>
+        </div>
+
+        <p class="text-xs text-gray-400 mt-8">
+            Please ensure location services are enabled in your browser.
+        </p>
+    </div>
+
+    <script>
+        const API_KEY = "8262063f02eec432bfd9862c238931e6"; // Your actual API key
+        const BASE_URL = "https://api.openweathermap.org/data/2.5/weather";
+
+        const loadingDiv = document.getElementById('loading');
+        const errorDiv = document.getElementById('error-message');
+        const weatherDisplayDiv = document.getElementById('weather-display');
+        const locationName = document.getElementById('location-name');
+        const temperature = document.getElementById('temperature');
+        const weatherDescription = document.getElementById('weather-description');
+        const weatherIcon = document.getElementById('weather-icon');
+        const rainInfo = document.getElementById('rain-info');
+        const humidity = document.getElementById('humidity');
+        const windSpeed = document.getElementById('wind-speed');
+
+        // Function to set weather icon based on OpenWeatherMap icon code
+        function getWeatherIconClass(iconCode) {
+            // Mapping OpenWeatherMap icons to Font Awesome classes
+            // This is a simplified mapping, you can expand it as needed
+            switch (iconCode) {
+                case '01d': return 'fa-sun'; // clear sky day
+                case '01n': return 'fa-moon'; // clear sky night
+                case '02d': case '02n': return 'fa-cloud-sun'; // few clouds
+                case '03d': case '03n': return 'fa-cloud'; // scattered clouds
+                case '04d': case '04n': return 'fa-cloud-meatball'; // broken clouds, overcast clouds
+                case '09d': case '09n': return 'fa-cloud-showers-heavy'; // shower rain
+                case '10d': case '10n': return 'fa-cloud-rain'; // rain
+                case '11d': case '11n': return 'fa-bolt'; // thunderstorm
+                case '13d': case '13n': return 'fa-snowflake'; // snow
+                case '50d': case '50n': return 'fa-smog'; // mist
+                default: return 'fa-question-circle'; // fallback
+            }
+        }
+
+        async function fetchWeatherData(lat, lon) {
+            loadingDiv.classList.remove('hidden');
+            weatherDisplayDiv.classList.add('hidden');
+            errorDiv.classList.add('hidden');
+
+            const url = `${BASE_URL}?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
+
+            try {
+                const response = await fetch(url);
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(`HTTP error! Status: ${response.status} - ${errorData.message || 'Unknown error'}`);
+                }
+                const data = await response.json();
+                console.log(data); // Log the full data for debugging
+
+                locationName.textContent = data.name || 'Unknown Location';
+                temperature.textContent = Math.round(data.main.temp);
+                weatherDescription.textContent = data.weather[0].description;
+
+                // Set weather icon
+                weatherIcon.className = `icon-large fas ${getWeatherIconClass(data.weather[0].icon)}`;
+
+                // Handle rain information
+                if (data.rain && data.rain['1h']) {
+                    rainInfo.textContent = `${data.rain['1h']} mm in last 1 hour`;
+                } else if (data.rain && data.rain['3h']) {
+                    rainInfo.textContent = `${data.rain['3h']} mm in last 3 hours`;
+                } else {
+                    rainInfo.textContent = 'No recent rain detected';
+                }
+
+                humidity.textContent = data.main.humidity;
+                windSpeed.textContent = data.wind.speed;
+
+                loadingDiv.classList.add('hidden');
+                weatherDisplayDiv.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error fetching weather data:", error);
+                loadingDiv.classList.add('hidden');
+                errorDiv.textContent = `Could not fetch weather data: ${error.message}.`;
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lon = position.coords.longitude;
+                        fetchWeatherData(lat, lon);
+                    },
+                    (error) => {
+                        loadingDiv.classList.add('hidden');
+                        errorDiv.classList.remove('hidden');
+                        let errorMessage = "Geolocation failed. Please allow location access.";
+                        switch (error.code) {
+                            case error.PERMISSION_DENIED:
+                                errorMessage = "Location access denied. Please enable location services for this site.";
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                errorMessage = "Location information is unavailable.";
+                                break;
+                            case error.TIMEOUT:
+                                errorMessage = "The request to get user location timed out.";
+                                break;
+                            case error.UNKNOWN_ERROR:
+                                errorMessage = "An unknown error occurred while getting location.";
+                                break;
+                        }
+                        errorDiv.textContent = errorMessage;
+                        console.error("Geolocation error:", error);
+                    }
+                );
+            } else {
+                loadingDiv.classList.add('hidden');
+                errorDiv.classList.remove('hidden');
+                errorDiv.textContent = "Geolocation is not supported by your browser.";
+            }
+        }
+
+        // Initialize the app on window load
+        window.onload = getLocation;
+    </script>
 </body>
 </html>
