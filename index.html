@@ -19,6 +19,7 @@
             min-height: 100vh;
             color: white;
             padding: 1rem;
+            overflow-x: hidden; /* Prevent horizontal scrolling */
         }
         .weather-card {
             background-color: rgba(255, 255, 255, 0.15); /* Slightly transparent white */
@@ -39,7 +40,7 @@
             font-weight: 700;
             line-height: 1;
         }
-        .rain-percentage {
+        .rain-info-display {
             font-size: 2.5rem;
             font-weight: 600;
             margin-top: 1rem;
@@ -76,10 +77,12 @@
             </div>
             <p id="weather-description" class="text-2xl capitalize mb-2"></p>
 
-            <div class="rain-percentage mb-4">
+            <div class="rain-info-display mb-4">
                 <i class="fas fa-cloud-showers-heavy text-indigo-200"></i>
-                <span id="rain-info"></span>
+                <span id="rain-condition"></span>
             </div>
+            <p id="rain-details" class="text-lg text-gray-200 mb-4"></p>
+
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-lg">
                 <div class="bg-white bg-opacity-10 p-3 rounded-xl flex items-center justify-center shadow-inner">
@@ -98,7 +101,8 @@
 
     <script>
         const API_KEY = "8262063f02eec432bfd9862c238931e6"; // Your actual API key
-        const BASE_URL = "https://api.openweathermap.org/data/2.5/weather";
+        // Using OpenWeatherMap One Call API 3.0 for more detailed forecast data including probability of precipitation
+        const BASE_URL = "https://api.openweathermap.org/data/3.0/onecall";
 
         const loadingDiv = document.getElementById('loading');
         const errorDiv = document.getElementById('error-message');
@@ -107,14 +111,14 @@
         const temperature = document.getElementById('temperature');
         const weatherDescription = document.getElementById('weather-description');
         const weatherIcon = document.getElementById('weather-icon');
-        const rainInfo = document.getElementById('rain-info');
+        const rainCondition = document.getElementById('rain-condition'); // Will show "Chance of Rain" or "Actual Rainfall"
+        const rainDetails = document.getElementById('rain-details'); // Details like "X mm in last hr"
         const humidity = document.getElementById('humidity');
         const windSpeed = document.getElementById('wind-speed');
 
         // Function to set weather icon based on OpenWeatherMap icon code
         function getWeatherIconClass(iconCode) {
             // Mapping OpenWeatherMap icons to Font Awesome classes
-            // This is a simplified mapping, you can expand it as needed
             switch (iconCode) {
                 case '01d': return 'fa-sun'; // clear sky day
                 case '01n': return 'fa-moon'; // clear sky night
@@ -135,7 +139,9 @@
             weatherDisplayDiv.classList.add('hidden');
             errorDiv.classList.add('hidden');
 
-            const url = `${BASE_URL}?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
+            // Exclude unnecessary data to keep response smaller: minutely, daily, alerts
+            // We need current and hourly for pop and rain volume
+            const url = `${BASE_URL}?lat=${lat}&lon=${lon}&exclude=minutely,daily,alerts&appid=${API_KEY}&units=metric`;
 
             try {
                 const response = await fetch(url);
@@ -146,24 +152,43 @@
                 const data = await response.json();
                 console.log(data); // Log the full data for debugging
 
-                locationName.textContent = data.name || 'Unknown Location';
-                temperature.textContent = Math.round(data.main.temp);
-                weatherDescription.textContent = data.weather[0].description;
+                // Try to get a more readable location name if available, otherwise default
+                let locationString = 'Your Location';
+                if (data.timezone) {
+                    const timezoneParts = data.timezone.split('/');
+                    if (timezoneParts.length > 1) {
+                        locationString = timezoneParts[1].replace(/_/g, ' '); // e.g., Asia/Singapore -> Singapore
+                    } else {
+                        locationString = timezoneParts[0].replace(/_/g, ' ');
+                    }
+                }
+                locationName.textContent = locationString;
 
-                // Set weather icon
-                weatherIcon.className = `icon-large fas ${getWeatherIconClass(data.weather[0].icon)}`;
+                // Current Weather Data
+                const currentWeather = data.current;
+                temperature.textContent = Math.round(currentWeather.temp);
+                weatherDescription.textContent = currentWeather.weather[0].description;
+                weatherIcon.className = `icon-large fas ${getWeatherIconClass(currentWeather.weather[0].icon)}`;
+                humidity.textContent = currentWeather.humidity;
+                windSpeed.textContent = currentWeather.wind_speed;
 
-                // Handle rain information
-                if (data.rain && data.rain['1h']) {
-                    rainInfo.textContent = `${data.rain['1h']} mm in last 1 hour`;
-                } else if (data.rain && data.rain['3h']) {
-                    rainInfo.textContent = `${data.rain['3h']} mm in last 3 hours`;
+                // Rain Information: Prioritize actual rain volume if available
+                if (currentWeather.rain && currentWeather.rain['1h']) {
+                    rainCondition.textContent = 'Actual Rainfall';
+                    rainDetails.textContent = `${currentWeather.rain['1h']} mm in last 1 hour`;
+                } else if (currentWeather.rain && currentWeather.rain['3h']) {
+                    rainCondition.textContent = 'Actual Rainfall';
+                    rainDetails.textContent = `${currentWeather.rain['3h']} mm in last 3 hours`;
+                } else if (data.hourly && data.hourly.length > 0 && typeof data.hourly[0].pop !== 'undefined') {
+                    // Fallback to probability of precipitation from hourly forecast
+                    const popPercentage = Math.round(data.hourly[0].pop * 100);
+                    rainCondition.textContent = 'Chance of Rain';
+                    rainDetails.textContent = `${popPercentage}% for the next hour`;
                 } else {
-                    rainInfo.textContent = 'No recent rain detected';
+                    rainCondition.textContent = 'No Rain Expected';
+                    rainDetails.textContent = 'No recent rainfall or forecast probability detected.';
                 }
 
-                humidity.textContent = data.main.humidity;
-                windSpeed.textContent = data.wind.speed;
 
                 loadingDiv.classList.add('hidden');
                 weatherDisplayDiv.classList.remove('hidden');
@@ -171,7 +196,7 @@
             } catch (error) {
                 console.error("Error fetching weather data:", error);
                 loadingDiv.classList.add('hidden');
-                errorDiv.textContent = `Could not fetch weather data: ${error.message}.`;
+                errorDiv.textContent = `Could not fetch weather data: ${error.message}. Please check your API key, ensure location services are enabled, and try again later.`;
                 errorDiv.classList.remove('hidden');
             }
         }
